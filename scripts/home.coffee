@@ -1,11 +1,9 @@
 # Description:
-#   コンフルURL
+#   Home URL
 #
 # Commands:
-#   home - 麻雀同好会のコンフルページURLを返します
-KEY_URL_HOME = 'key_url_home'
+#   home - URL_HOMEに指定した値を返します
 
 module.exports = (robot) ->
   robot.hear /HOME$/i, (msg) ->
-    #robot.brain.set KEY_URL_HOME, "http://"
-    msg.send robot.brain.get KEY_URL_HOME
+    msg.send process.env.URL_HOME
