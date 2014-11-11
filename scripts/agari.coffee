@@ -1,16 +1,22 @@
 # Description:
-#   今日の和了
+#   麻雀問題
 #   ※フォーマットについてはここ
 #   http://jyanryu.blog.fc2.com/blog-entry-18.html
 #
 # Commands:
-#   agari <id> - ランダムに選ばれた和了状態を表示します。idでの指定が可能です。
-#   tensuu <id> - 麻雀の点数計算問題を表示します。idでの指定が可能です。
-#   machi <id> - 麻雀の待ち当て問題を表示します。idでの指定が可能です。
-#   yaku <id> - 麻雀の役当て問題を表示します。idでの指定が可能です。
+#   agari - ランダムに選ばれた和了状態を表示します。
+#   tensuu - 麻雀の点数計算問題を表示します。
+#   machi - 麻雀の待ち当て問題を表示します。
+#   yaku - 麻雀の役当て問題を表示します。
+#   result - 直前に表示した麻雀問題の回答を表示します。
+KEY_RESULT_1 = 'key_result_1'
+KEY_RESULT_2 = 'key_result_2'
+
+request = require 'request'
+cheerio = require 'cheerio'
 
 #天鳳用コード変換クラス
-class Mahjang
+class Mahjong
   @SOUZ = [
     {code:"0",name:"１"},
     {code:"1",name:"２"},
@@ -50,7 +56,7 @@ class Mahjang
     {code:"31",name:"白"},
     {code:"32",name:"発"},
     {code:"33",name:"中"}]
-  @HAIS = [].concat(Mahjang.SOUZ, Mahjang.PINZ, Mahjang.MANZ, Mahjang.FANP, Mahjang.SANP)
+  @HAIS = [].concat(Mahjong.SOUZ, Mahjong.PINZ, Mahjong.MANZ, Mahjong.FANP, Mahjong.SANP)
   @YAKU = [
     "ツモ",
     "リーチ",
@@ -108,7 +114,7 @@ class Mahjang
     "裏ドラ",
     "赤ドラ"]
   @TENHYO = 
-    "親":
+    "親番":
       "ツモ":
         "20符" :[         "-", "700オール","1300オール","2600オール","4000オール","6000オール","6000オール","8000オール","8000オール","8000オール","12000オール","12000オール"]
         "25符" :[         "-",         "-","1600オール","3200オール","4000オール","6000オール","6000オール","8000オール","8000オール","8000オール","12000オール","12000オール"]
@@ -133,7 +139,7 @@ class Mahjang
         "90符" :["4400点", "8700点","12000点","12000点","12000点","18000点","18000点","24000点","24000点","24000点","32000点","32000点"]
         "100符":["4800点", "9600点","12000点","12000点","12000点","18000点","18000点","24000点","24000点","24000点","32000点","32000点"]
         "110符":["5300点","10600点","12000点","12000点","12000点","18000点","18000点","24000点","24000点","24000点","32000点","32000点"]
-    "子":
+    "子番":
       "ツモ":
         "20符" :[         "-",  "400/700点", "700/1300点","1300/2600点","2000/4000点","3000/6000点","3000/6000点","4000/8000点","4000/8000点","4000/8000点","6000/12000点","6000/12000点"]
         "25符" :[         "-",          "-", "800/1600点","1600/3200点","2000/4000点","3000/6000点","3000/6000点","4000/8000点","4000/8000点","4000/8000点","6000/12000点","6000/12000点"]
@@ -159,10 +165,92 @@ class Mahjang
         "100符":["3200点","6400点","8000点","8000点","8000点","12000点","12000点","18000点","18000点","18000点","24000点","24000点"]
         "110符":["3600点","7100点","8000点","8000点","8000点","12000点","12000点","18000点","18000点","18000点","24000点","24000点"]
 
+  _selector = undefined
+
+  constructor: (selector)->
+    _selector = selector
+
+  getOyaPlayer: ->
+    _selector.closest("INIT").attr("oya")
+
+  getHoraPlayer: ->
+    _selector.attr("who")
+
+  getHojuPlayer: ->
+    _selector.attr("fromwho")
+
+  getKaze: ->
+    kaze = ""
+    switch this.getOyaPlayer() - this.getHoraPlayer()
+      when 0
+        kaze =  "東"
+      when 1,-3
+        kaze =  "南"
+      when 2,-2
+        kaze =  "西"
+      when 3,-1
+        kaze =  "北"
+    "#{kaze}家"
+
+  getTumoRon: ->
+    return if this.getHoraPlayer() is this.getHojuPlayer() then "ツモ" else "ロン"
+
+  getBan: ->
+    return if this.getKaze() is "東家" then "親番" else "子番"
+
+  getTehai: ->
+    tehai_code = _selector.attr("hai").split(",")
+    machi_code = _selector.attr("machi")
+    tehai_machi_idx = tehai_code.indexOf(machi_code)
+    tehai_code.splice(tehai_machi_idx, 1) # 手牌に待ち牌が含まれているので削除する
+    mj = this
+    tehai_code.map((i)->mj.getHai(i).name).join("")
+
+  getMachi: ->
+    machi_code = _selector.attr("machi")
+    this.getHai(machi_code).name
+
+  getHuro: ->
+    mentsu_code = _selector.attr("m")
+    mentsu_list = []
+    if mentsu_code != undefined
+      mj = this
+      mentsu_list = mentsu_code.split(",").map((mentsu) -> mj.getMentsuName(mentsu))
+    mentsu_list.join(" ")
+
+  getYaku: ->
+    yaku = _selector.attr("yaku").split(",")
+    yaku_list = []
+    for i in [0..yaku.length]
+      if (i+2)%2 is 0
+        yaku_name = undefined
+        if yaku[i] < 52
+          yaku_name = Mahjong.YAKU[yaku[i]]
+        else
+          if yaku[i+1] > 0
+            yaku_name = Mahjong.YAKU[yaku[i]] + yaku[i+1]
+        if yaku_name isnt undefined
+          yaku_list = yaku_list.concat(yaku_name)
+    "<#{yaku_list.join(" ")}>"
+
+  getTen: ->
+    yaku = _selector.attr("yaku").split(",")
+    han = 0
+    for i in [0..yaku.length]
+      if (i+2)%2 is 0
+      else
+        han += parseInt(yaku[i])
+    #符、点数
+    ten = _selector.attr("ten").split(",")
+    hu = ten[0]
+    # ten = ten[1]
+    ten = Mahjong.TENHYO[this.getBan()][this.getTumoRon()]["#{hu}符"][han-1]
+    "#{hu}符#{han}翻 #{ten}"
+
   # 牌取得
   getHai: (code)->
     code = parseInt(code/4).toString()
-    Mahjang.HAIS.filter((hai) -> hai.code is code)[0]
+    Mahjong.HAIS.filter((hai) -> hai.code is code)[0]
 
   convMentsu: (m)->
     kui=(m&3)
@@ -286,48 +374,25 @@ class Mahjang
         h[0]=a
       return {"hai": h.concat(hai0), "kui":kui}
 
-  getKuiName: (kui_code)->
-    switch kui_code
-      when 0
-        return ""
-      when 1
-        return "→"
-      when 2
-        return "↑"
-      when 3
-        return "←"
-
-  getYaku: (code)->
-    Mahjang.YAKU[code]
-
-  getKaze: (oya,who)->
-    switch oya - who
-      when 0
-        return "東"
-      when 1,-3
-        return "南"
-      when 2,-2
-        return "西"
-      when 3,-1
-        return "北"
-
   getMentsuName: (mentsu)->
-    mahjang = this
-    convedMentsu = mahjang.convMentsu(mentsu)
-    #kuiName = mahjang.getKuiName(convedMentsu.kui)
-    mentsuName = convedMentsu.hai.map((i)->mahjang.getHai(i).name)
+    mj = this
+    convedMentsu = mj.convMentsu(mentsu)
+    #kuiName = Mahjong.getKuiName(convedMentsu.kui)
+    mentsuName = convedMentsu.hai.map((i)->mj.getHai(i).name)
     # return "#{kuiName}(#{mentsuName.join("")})"
     if convedMentsu.kui is 0
       return "暗(#{mentsuName.join("")})"
     else
       return "(#{mentsuName.join("")})"
 
-request = require 'request'
-cheerio = require 'cheerio'
-
 module.exports = (robot) ->
-  robot.hear /(AGARI|TENSUU|YAKU|MACHI)( [0-9]+)?$/i, (msg) ->
+  robot.hear /(AGARI|TENSUU|YAKU|MACHI|RESULT)( [0-9]+)?$/i, (msg) ->
     cmd = msg.match[1].toUpperCase()
+    if cmd is "RESULT"
+      msg.send robot.brain.get KEY_RESULT_1 + msg.message.user.room
+      msg.send robot.brain.get KEY_RESULT_2 + msg.message.user.room
+      return
+
     if msg.match[2] && msg.match[2].match /( [0-9]+)/
       seed1 = Math.floor(msg.match[2].trim() / 100)
       seed2 = msg.match[2].trim() % 100
@@ -345,86 +410,35 @@ module.exports = (robot) ->
         timeout: 2000
         headers: {'user-agent': 'node title fetcher'}
       request options, (error, response, body) ->
-        mahjang = new Mahjang() 
+
         $ = cheerio.load body
         #sprintTehai
         seed2 = seed2 ? Math.floor(Math.random() * $("AGARI").length)
         agari = $("AGARI").get(seed2)
-        init = $(agari).closest("INIT")
-        
-        result1 = ["[#{seed1 * 100 + seed2}]"]
-        result2 = []
-        
-        # 1行目
-        
-        #風
-        oya = $(init).attr("oya") #親プレイヤー
-        who = $(agari).attr("who") #和了プレイヤー
-        fromWho = $(agari).attr("fromwho") #放銃プレイヤー
-        
-        kaze = mahjang.getKaze(oya,who)
-        tumoron = if who is fromWho then "ツモ" else "ロン"
 
-        #手牌,アガリ牌
-        tehai_code = $(agari).attr("hai").split(",")
-        machi_code = $(agari).attr("machi")
-        tehai_machi_idx = tehai_code.indexOf(machi_code)
-        tehai_code.splice(tehai_machi_idx, 1) # 手牌に待ち牌が含まれているので削除する
-        
-        tehai_name = tehai_code.map((i)->mahjang.getHai(i).name)
-        machi_name = mahjang.getHai(machi_code).name
-        result1 = result1.concat("#{tehai_name.join("")}")
-        
-        #待ち
-        if !cmd.match /MACHI/
-          result1 = result1.concat("#{tumoron}:#{machi_name}")
+        mj = new Mahjong($(agari))
 
-        #副露
-        mentsu_code = $(agari).attr("m")
-        if mentsu_code != undefined
-          mentsu_list = mentsu_code.split(",").map((mentsu) -> mahjang.getMentsuName(mentsu))
-          result1 = result1.concat("#{mentsu_list.join(" ")}")
+        tehai = mj.getTehai()
+        machi = mj.getMachi()
+        huro = mj.getHuro()
+        kaze = mj.getKaze()
+        tumoron = mj.getTumoRon()
+        ban = mj.getBan()
+        yaku = mj.getYaku()
+        ten = mj.getTen()
 
-        msg.send result1.join(" ")
+        switch cmd
+          when "MACHI"
+            msg.send "#{tehai} #{huro}"
+          when "YAKU"
+            msg.send "#{tehai} #{tumoron}:#{machi} #{huro}"
+            msg.send "#{kaze} #{ban}"
+          when "TENSUU"
+            msg.send "#{tehai} #{tumoron}:#{machi} #{huro}"
+            msg.send "#{kaze} #{ban} #{yaku}"
+          when "AGARI"
+            msg.send "#{tehai} #{tumoron}:#{machi} #{huro}"
+            msg.send "#{kaze} #{ban} #{yaku} #{ten}"
 
-        # 2行目
-        
-        if !cmd.match /MACHI/
-        
-          #自風
-          result2 = result2.concat("#{kaze}家")
-          
-          #親番、子番
-          ban = if kaze is "東" then "親" else "子"
-          result2 = result2.concat("#{ban}番")
-          
-          #役（奇数indexは翻数）
-          if !cmd.match /YAKU|MACHI/
-            yaku = $(agari).attr("yaku").split(",")
-            yaku_list = []
-            han = 0
-            for i in [0..yaku.length]
-              if (i+2)%2 is 0
-                yaku_name = undefined
-                if yaku[i] < 52
-                  yaku_name = mahjang.getYaku(yaku[i])
-                else
-                  if yaku[i+1] > 0
-                    yaku_name = mahjang.getYaku(yaku[i]) + yaku[i+1]
-                if yaku_name isnt undefined
-                  yaku_list = yaku_list.concat(yaku_name)
-                
-              else
-                han += parseInt(yaku[i])
-            result2 = result2.concat("<#{yaku_list.join(" ")}>")
-  
-          #符、点数
-          if !cmd.match /TENSUU|YAKU|MACHI/
-            ten = $(agari).attr("ten").split(",")
-            hu = ten[0]
-            # ten = ten[1]
-            ten = Mahjang.TENHYO[ban][tumoron]["#{hu}符"][han-1]
-            result2 = result2.concat("#{hu}符#{han}翻")
-            result2 = result2.concat("#{ten}")
-          
-          msg.send result2.join(" ")
+        robot.brain.set KEY_RESULT_1 + msg.message.user.room, "#{tehai} #{tumoron}:#{machi} #{huro}"
+        robot.brain.set KEY_RESULT_2 + msg.message.user.room, "#{kaze} #{ban} #{yaku} #{ten}"
