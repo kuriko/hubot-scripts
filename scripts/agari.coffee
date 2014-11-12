@@ -4,10 +4,11 @@
 #   http://jyanryu.blog.fc2.com/blog-entry-18.html
 #
 # Commands:
-#   agari - ランダムに選ばれた和了状態を表示します。
+#   agari  - ランダムに選ばれた和了状態を表示します。
+#   haipai - 麻雀の配牌問題を表示します。
 #   tensuu - 麻雀の点数計算問題を表示します。
-#   machi - 麻雀の待ち当て問題を表示します。
-#   yaku - 麻雀の役当て問題を表示します。
+#   machi  - 麻雀の待ち当て問題を表示します。
+#   yaku   - 麻雀の役当て問題を表示します。
 #   result - 直前に表示した麻雀問題の回答を表示します。
 KEY_RESULT_1 = 'key_result_1'
 KEY_RESULT_2 = 'key_result_2'
@@ -18,44 +19,44 @@ cheerio = require 'cheerio'
 #天鳳用コード変換クラス
 class Mahjong
   @SOUZ = [
-    {code:"0",name:"１"},
-    {code:"1",name:"２"},
-    {code:"2",name:"３"},
-    {code:"3",name:"４"},
-    {code:"4",name:"５"},
-    {code:"5",name:"６"},
-    {code:"6",name:"７"},
-    {code:"7",name:"８"},
-    {code:"8",name:"９"}]
+    {code:"0",name:"１",next:"２"},
+    {code:"1",name:"２",next:"３"},
+    {code:"2",name:"３",next:"４"},
+    {code:"3",name:"４",next:"５"},
+    {code:"4",name:"５",next:"６"},
+    {code:"5",name:"６",next:"７"},
+    {code:"6",name:"７",next:"８"},
+    {code:"7",name:"８",next:"９"},
+    {code:"8",name:"９",next:"１"}]
   @PINZ = [
-    {code:"9",name:"①"},
-    {code:"10",name:"②"},
-    {code:"11",name:"③"},
-    {code:"12",name:"④"},
-    {code:"13",name:"⑤"},
-    {code:"14",name:"⑥"},
-    {code:"15",name:"⑦"},
-    {code:"16",name:"⑧"},
-    {code:"17",name:"⑨"}]
+    {code:"9",name:"①",next:"②"},
+    {code:"10",name:"②",next:"③"},
+    {code:"11",name:"③",next:"④"},
+    {code:"12",name:"④",next:"⑤"},
+    {code:"13",name:"⑤",next:"⑥"},
+    {code:"14",name:"⑥",next:"⑦"},
+    {code:"15",name:"⑦",next:"⑧"},
+    {code:"16",name:"⑧",next:"⑨"},
+    {code:"17",name:"⑨",next:"①"}]
   @MANZ = [
-    {code:"18",name:"一"},
-    {code:"19",name:"二"},
-    {code:"20",name:"三"},
-    {code:"21",name:"四"},
-    {code:"22",name:"五"},
-    {code:"23",name:"六"},
-    {code:"24",name:"七"},
-    {code:"25",name:"八"},
-    {code:"26",name:"九"}]
+    {code:"18",name:"一",next:"二"},
+    {code:"19",name:"二",next:"三"},
+    {code:"20",name:"三",next:"四"},
+    {code:"21",name:"四",next:"五"},
+    {code:"22",name:"五",next:"六"},
+    {code:"23",name:"六",next:"七"},
+    {code:"24",name:"七",next:"八"},
+    {code:"25",name:"八",next:"九"},
+    {code:"26",name:"九",next:"一"}]
   @FANP = [
-    {code:"27",name:"東"},
-    {code:"28",name:"南"},
-    {code:"29",name:"西"},
-    {code:"30",name:"北"}]
+    {code:"27",name:"東",next:"南"},
+    {code:"28",name:"南",next:"西"},
+    {code:"29",name:"西",next:"北"},
+    {code:"30",name:"北",next:"東"}]
   @SANP = [
-    {code:"31",name:"白"},
-    {code:"32",name:"発"},
-    {code:"33",name:"中"}]
+    {code:"31",name:"白",next:"発"},
+    {code:"32",name:"発",next:"中"},
+    {code:"33",name:"中",next:"白"}]
   @HAIS = [].concat(Mahjong.SOUZ, Mahjong.PINZ, Mahjong.MANZ, Mahjong.FANP, Mahjong.SANP)
   @YAKU = [
     "ツモ",
@@ -198,6 +199,10 @@ class Mahjong
   getBan: ->
     return if this.getKaze() is "東家" then "親番" else "子番"
 
+  getDora: ->
+    dora = this.getHai(_selector.attr("dorahai").split(",")[0]).next
+    "[ドラ:#{dora}]"
+
   getTehai: ->
     tehai_code = _selector.attr("hai").split(",")
     machi_code = _selector.attr("machi")
@@ -246,6 +251,11 @@ class Mahjong
     # ten = ten[1]
     ten = Mahjong.TENHYO[this.getBan()][this.getTumoRon()]["#{hu}符"][han-1]
     "#{hu}符#{han}翻 #{ten}"
+
+  getHaipai: ->
+    haipai_code = _selector.closest("INIT").attr("hai#{this.getHoraPlayer()}").split(',')
+    mj = this
+    haipai_code.sort((a, b) -> parseInt(a,10) - parseInt(b,10)).map((i)->mj.getHai(i).name).join("")
 
   # 牌取得
   getHai: (code)->
@@ -386,7 +396,7 @@ class Mahjong
       return "(#{mentsuName.join("")})"
 
 module.exports = (robot) ->
-  robot.hear /(AGARI|TENSUU|YAKU|MACHI|RESULT)( [0-9]+)?$/i, (msg) ->
+  robot.hear /(HAIPAI|AGARI|TENSUU|YAKU|MACHI|RESULT)( [0-9]+)?$/i, (msg) ->
     cmd = msg.match[1].toUpperCase()
     if cmd is "RESULT"
       msg.send robot.brain.get KEY_RESULT_1 + msg.message.user.room
@@ -418,6 +428,8 @@ module.exports = (robot) ->
 
         mj = new Mahjong($(agari))
 
+        dora = mj.getDora()
+        haipai = mj.getHaipai()
         tehai = mj.getTehai()
         machi = mj.getMachi()
         huro = mj.getHuro()
@@ -428,17 +440,18 @@ module.exports = (robot) ->
         ten = mj.getTen()
 
         switch cmd
+          when "HAIPAI"
+            msg.send "#{dora} #{kaze} #{haipai}"
           when "MACHI"
-            msg.send "#{tehai} #{huro}"
+            msg.send "#{dora} #{tehai} #{huro}"
           when "YAKU"
-            msg.send "#{tehai} #{tumoron}:#{machi} #{huro}"
-            msg.send "#{kaze} #{ban}"
+            msg.send "#{dora} #{kaze} #{tehai} #{tumoron}:#{machi} #{huro}"
           when "TENSUU"
-            msg.send "#{tehai} #{tumoron}:#{machi} #{huro}"
-            msg.send "#{kaze} #{ban} #{yaku}"
+            msg.send "#{dora} #{kaze} #{tehai} #{tumoron}:#{machi} #{huro}"
+            msg.send "#{yaku}"
           when "AGARI"
-            msg.send "#{tehai} #{tumoron}:#{machi} #{huro}"
-            msg.send "#{kaze} #{ban} #{yaku} #{ten}"
+            msg.send "#{dora} #{kaze} #{tehai} #{tumoron}:#{machi} #{huro}"
+            msg.send "#{yaku} #{ten}"
 
-        robot.brain.set KEY_RESULT_1 + msg.message.user.room, "#{tehai} #{tumoron}:#{machi} #{huro}"
-        robot.brain.set KEY_RESULT_2 + msg.message.user.room, "#{kaze} #{ban} #{yaku} #{ten}"
+        robot.brain.set KEY_RESULT_1 + msg.message.user.room, "#{dora} #{kaze} #{tehai} #{tumoron}:#{machi} #{huro}"
+        robot.brain.set KEY_RESULT_2 + msg.message.user.room, "#{yaku} #{ten}"
