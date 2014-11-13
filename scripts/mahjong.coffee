@@ -80,7 +80,7 @@ class Mahjong
 
 # 配牌コマンド
 module.exports = (robot) ->
-  robot.hear /(^MAHJONG$|^-(１|２|３|４|５|６|７|８|９|①|②|③|④|⑤|⑥|⑦|⑧|⑨|一|二|三|四|五|六|七|八|九|東|南|西|北|白|発|中|KAWA)?$)/i, (msg) ->
+  robot.hear /^(MAHJONG|-KAWA|-CLEAR|-|１|２|３|４|５|６|７|８|９|①|②|③|④|⑤|⑥|⑦|⑧|⑨|一|二|三|四|五|六|七|八|九|東|南|西|北|白|発|中)$/i, (msg) ->
     try
       mj = new Mahjong
       cmd = msg.match[1].toUpperCase().replace('-','')
@@ -91,17 +91,24 @@ module.exports = (robot) ->
           tehai = mj.createHaipai(yama)
           tumo =  mj.tumo(yama)
           kawa = []
+          junme = 1
           msg.send "東1局 東家 ドラ:#{dora}"
         when "KAWA"
           kawa = robot.brain.get(KEY_KAWA + msg.message.user.name).split(',')
           kawa.shift()
           msg.send kawa.map((i) -> mj.getHaiByCode(i).name).join("")
           return
+        when "CLEAR"
+          robot.brain.set KEY_TEHAI + msg.message.user.name, ''
+          robot.brain.set KEY_YAMA + msg.message.user.name, ''
+          robot.brain.set KEY_KAWA + msg.message.user.name, ''
+          return
         else
           yama = robot.brain.get(KEY_YAMA + msg.message.user.name).split(',')
           tehai = robot.brain.get(KEY_TEHAI + msg.message.user.name).split(',')
           kawa = robot.brain.get(KEY_KAWA + msg.message.user.name).split(',')
           if yama.length is 0 then return
+          junme = 124 - yama.length
           if cmd is "" #ツモ切り
             sutehai_code = tehai.pop()
           else #手出し
@@ -115,15 +122,16 @@ module.exports = (robot) ->
       #表示
       tehai_name = tehai.sort((a, b) -> a.localeCompare(b)).map((i) -> mj.getHaiByCode(i).name).join("")
       tumo_name = mj.getHaiByCode(tumo).name
-      if yama.length > 105
-        msg.send "#{tehai_name} #{tumo_name}"
+      if junme <= 18
+        msg.send "#{junme}順目 #{tehai_name} #{tumo_name}"
+        #保存
+        tehai.push(tumo)
+        robot.brain.set KEY_TEHAI + msg.message.user.name, tehai.join(',')
+        robot.brain.set KEY_YAMA + msg.message.user.name, yama.join(',')
+        robot.brain.set KEY_KAWA + msg.message.user.name, kawa.join(',')
       else
-        msg.send "#{tehai_name} #{tumo_name} 流局"
-
-      #保存
-      tehai.push(tumo)
-      robot.brain.set KEY_TEHAI + msg.message.user.name, tehai.join(',')
-      robot.brain.set KEY_YAMA + msg.message.user.name, yama.join(',')
-      robot.brain.set KEY_KAWA + msg.message.user.name, kawa.join(',')
+        msg.send "#{tehai_name} 流局"
+        robot.brain.set KEY_TEHAI + msg.message.user.name, ''
+        robot.brain.set KEY_YAMA + msg.message.user.name, ''
 
     catch error
